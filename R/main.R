@@ -463,17 +463,22 @@ plotMetaPrograms <- function(mp.res,
   if (!showtree) {
     tree <- FALSE
   }
-   if(is.null(annotation_colors)){
+  
+  #custom annotation colors
+  if (is.null(annotation_colors)){
     annotation_colors_use <- annotation_colors
-  }}else if(class(annotation_colors)!="list"){
-    if(class(annotation_colors)=="character"&length(annotation_colors)==nMP){
+  }
+  else if (!is(annotation_colors, "list")){
+    if(is(annotation_colors, "character") & length(annotation_colors)>=nMP){
+      annotation_colors <- annotation_colors[seq(1, nMP)]
       annotation_colors_use <- list(Metaprogram=annotation_colors)
-    }
-  }else if(any("Metaprogram" %in% names(annotation_colors)){
+    } 
+  } else if (any("Metaprogram" %in% names(annotation_colors)){
     annotation_colors_use <- annotation_colors
   }else {
     stop("annotation_colors should be a character vector having same length with nMP!")
   }
+  
   ph <- pheatmap(J,
                  scale = scale,
                  color = palette,
