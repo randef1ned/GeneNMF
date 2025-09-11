@@ -463,7 +463,17 @@ plotMetaPrograms <- function(mp.res,
   if (!showtree) {
     tree <- FALSE
   }
-  
+   if(is.null(annotation_colors)){
+    annotation_colors_use <- annotation_colors
+  }}else if(class(annotation_colors)!="list"){
+    if(class(annotation_colors)=="character"&length(annotation_colors)==nMP){
+      annotation_colors_use <- list(Metaprogram=annotation_colors)
+    }
+  }else if(any("Metaprogram" %in% names(annotation_colors)){
+    annotation_colors_use <- annotation_colors
+  }else {
+    stop("annotation_colors should be a character vector having same length with nMP!")
+  }
   ph <- pheatmap(J,
                  scale = scale,
                  color = palette,
@@ -476,7 +486,7 @@ plotMetaPrograms <- function(mp.res,
                  gaps_col = gaps,
                  annotation_col = annotation_col,
                  annotation_row = annotation_col,
-                 annotation_colors = annotation_colors,
+                 annotation_colors = annotation_colors_use,
                  annotation_names_col = FALSE,
                  annotation_names_row = FALSE,
                  show_rownames = show_rownames,
