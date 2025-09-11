@@ -706,7 +706,7 @@ findVariableFeatures_wfilters <- function(
   
   varfeat <- setdiff(varfeat, genes.block)
   #Also remove genes that are very poorly or always expressed
-  means <- apply(GetAssayData(obj, assay=assay, slot="data")[varfeat,], 1, mean)
+  means <- apply(GetAssayData(obj, assay=assay, layer="data")[varfeat,], 1, mean)
   removeGenes2 <- names(means[means<min.exp | means>max.exp])
   
   varfeat <- setdiff(varfeat, removeGenes2)
