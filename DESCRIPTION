@@ -26,7 +26,8 @@ Imports: RcppML,
     irlba,
     pheatmap,
     dendextend,
-    viridis
+    viridis,
+    colorspace
 Suggests: knitr,
     rmarkdown,
     fgsea,

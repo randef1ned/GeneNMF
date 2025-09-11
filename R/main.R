@@ -408,6 +408,7 @@ getMetaPrograms <- function(nmf.res,
 #' 
 #' @importFrom pheatmap pheatmap
 #' @importFrom viridis viridis
+#' @importFrom colorspace hex
 #' @importFrom stats as.dendrogram
 #' @export  
 plotMetaPrograms <- function(mp.res,
