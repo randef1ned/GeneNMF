@@ -523,6 +523,7 @@ plotMetaPrograms <- function(mp.res,
 #' @return Returns a table of enriched gene programs from GSEA
 #'
 #' @examples
+#' \donttest{
 #' data(sampleObj)
 #' geneset <- c("BANK1","CD22","CD79A","CD19","IGHD","IGHG3","IGHM")
 #' #test is conditional on availability of suggested packages
@@ -532,7 +533,7 @@ plotMetaPrograms <- function(mp.res,
 #'        universe=rownames(sampleObj),
 #'        category = "C8")
 #' }
-#' 
+#' }
 #' @export  
 runGSEA <- function(genes, universe=NULL,
                     category="H", subcategory=NULL,

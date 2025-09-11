@@ -41,6 +41,7 @@ sets from MSigDB. Note: this is an optional function, which is conditional
 to the installation of suggested packages \code{fgsea} and \code{msigdbr}.
 }
 \examples{
+\donttest{
 data(sampleObj)
 geneset <- c("BANK1","CD22","CD79A","CD19","IGHD","IGHG3","IGHM")
 #test is conditional on availability of suggested packages
@@ -50,5 +51,5 @@ if (requireNamespace("fgsea", quietly=TRUE) &
        universe=rownames(sampleObj),
        category = "C8")
 }
-
+}
 }
