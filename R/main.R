@@ -473,9 +473,10 @@ plotMetaPrograms <- function(mp.res,
       annotation_colors <- annotation_colors[seq(1, nMP)]
       annotation_colors_use <- list(Metaprogram=annotation_colors)
     } 
-  } else if (any("Metaprogram" %in% names(annotation_colors)){
+  }
+  else if (any("Metaprogram" %in% names(annotation_colors))){
     annotation_colors_use <- annotation_colors
-  }else {
+  } else {
     stop("annotation_colors should be a character vector having same length with nMP!")
   }
   
