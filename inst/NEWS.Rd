@@ -2,6 +2,17 @@
 \title{News for package \pkg{GeneNMF}}
 \encoding{UTF-8}
 
+\section{Version 0.9.2}{
+  New in this version:
+  \itemize{
+    \item Fix issue with running multiNMF on a sigle sample
+    \item Improved definition of cumulative weight for genes in MP
+    \item Update category -> collection for runGSEA
+    \item Replace deprecated 'slot' calls
+    \item Easier implementation for custom annotation colors (as named vectors)
+  }
+}
+
 \section{Version 0.8.0}{
   New in this version:
   \itemize{
