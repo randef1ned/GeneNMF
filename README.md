@@ -1,4 +1,4 @@
-# GeneNMF: unsupervised discovery of recurrent gene programs in multi-sample single-cell omics data
+# GeneNMF: fast, sensitive and accurate discovery of recurrent gene programs in multi-sample single-cell omics data
 
 [![](https://cranlogs.r-pkg.org/badges/GeneNMF)](https://cran.r-project.org/package=GeneNMF)
 [![](https://cranlogs.r-pkg.org/badges/grand-total/GeneNMF)](https://cran.r-project.org/package=GeneNMF)
