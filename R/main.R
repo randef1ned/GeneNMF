@@ -23,9 +23,15 @@
 #'     samples will be ignored)
 #' @param min.exp Minimum average log-expression value for retaining genes
 #' @param max.exp Maximum average log-expression value for retaining genes
-
 #' @param seed Random seed     
-#'     
+#' @param tol tolerance of the fit
+#' @param maxit maximum number of fitting iterations
+#' @param cuda Whether enabling cuda (experimental)
+#' @param cuda.env The name of `conda` environment with `torchnmf`
+#' @param cuda.conda_binary The binary location for `conda`
+#' @param cuda.device The device used in CUDA environment
+#' @param cuda.verbose Whether display the progress bar
+#' 
 #' @return Returns a list of NMF programs, one for each sample and for each
 #'     value of 'k'. The format of each program in the list follosw the
 #'     structure of \code{\link[RcppML]{nmf}} factorization models.
@@ -39,11 +45,15 @@
 #' @importFrom utils packageVersion
 #' @export  
 multiNMF <- function(obj.list, assay="RNA", slot="data", k=5:6,
-                   hvg=NULL, nfeatures = 2000, L1=c(0,0),
-                   min.exp=0.01, max.exp=3.0,
-                   center=FALSE, scale=FALSE,
-                   min.cells.per.sample = 10,
-                   hvg.blocklist=NULL, seed=123) {
+                     hvg=NULL, nfeatures = 2000, L1=c(0,0),
+                     min.exp=0.01, max.exp=3.0,
+                     center=FALSE, scale=FALSE,
+                     min.cells.per.sample = 10,
+                     hvg.blocklist=NULL, seed=123,
+                     tol = 1e-4, maxit = 100L,
+                     cuda = FALSE, cuda.device = 'cuda:0', cuda.env = 'torchnmf', 
+                     cuda.conda_binary = '/opt/mambaforge/bin/conda', 
+                     cuda.verbose = FALSE) {
   
   set.seed(seed)
   
@@ -69,12 +79,18 @@ multiNMF <- function(obj.list, assay="RNA", slot="data", k=5:6,
   nmf.res <- lapply(obj.list, function(this) {
     
     mat <- getDataMatrix(obj=this, assay=assay, slot=slot,
-                      hvg=hvg, center=center,
-                      scale=scale)
+                         hvg=hvg, center=center,
+                         scale=scale)
     
     res.k <- lapply(k, function(k.this) {
       
-      model <- RcppML::nmf(mat, k = k.this, L1 = L1, verbose=FALSE, seed=seed)
+      if (cuda) {
+        model <- cuda_nmf(mat, k = k.this, L1 = L1, tol = tol, maxit = maxit,
+                          cuda.verbose = cuda.verbose, cuda.device = cuda.device, 
+                          cuda.env = cuda.env, cuda.conda_binary = cuda.conda_binary)
+      } else {
+        model <- RcppML::nmf(mat, k = k.this, L1 = L1, verbose=FALSE, seed=seed)
+      }
       model <- check_cpp_version(model)
       
       rownames(model$h) <- paste0("pattern",1:nrow(model$h))
@@ -145,7 +161,7 @@ multiPCA <- function(obj.list, assay="RNA", slot="data", k=4:5,
   
   if (is.null(hvg) || length(hvg)<=1) {
     hvg <- findHVG(obj.list, nfeatures=nfeatures,
-                             min.exp=min.exp, max.exp=max.exp, hvg.blocklist=hvg.blocklist)
+                   min.exp=min.exp, max.exp=max.exp, hvg.blocklist=hvg.blocklist)
   }
   #Unit check on k
   if (!is.numeric(k)) {
@@ -160,8 +176,8 @@ multiPCA <- function(obj.list, assay="RNA", slot="data", k=4:5,
   pca.res <- lapply(obj.list, function(this) {
     
     mat <- getDataMatrix(obj=this, assay=assay, slot=slot,
-                                   hvg=hvg, center=center,
-                                   scale=scale, non_negative = FALSE)
+                         hvg=hvg, center=center,
+                         scale=scale, non_negative = FALSE)
     res.k <- lapply(k, function(k.this) {
       
       pca <- prcomp_irlba(t(as.matrix(mat)), center=F, scale.=F, n=k.this)
@@ -205,7 +221,7 @@ multiPCA <- function(obj.list, assay="RNA", slot="data", k=4:5,
 #' 
 #' @importFrom utils head
 #' @export
-  
+
 getNMFgenes <- function(nmf.res,
                         specificity.weight=5,
                         weight.explained=0.5,
@@ -295,7 +311,7 @@ getMetaPrograms <- function(nmf.res,
   metric = metric[1]
   
   nmf.wgt <- weightedLoadings(nmf.res=nmf.res,
-                           specificity.weight=specificity.weight)
+                              specificity.weight=specificity.weight)
   
   if (metric == "cosine") {
     J <- cosineSimilarity(geneList2table(nmf.wgt))  
@@ -327,8 +343,8 @@ getMetaPrograms <- function(nmf.res,
   
   #Get meta-program composition
   metaprograms.composition <- get_metaprogram_composition(J=J,
-                                                  markers.consensus=markers.consensus,
-                                                  cl_members=cl_members)
+                                                          markers.consensus=markers.consensus,
+                                                          cl_members=cl_members)
   
   #Remove any empty meta-program
   if (remove.empty) {
@@ -343,8 +359,8 @@ getMetaPrograms <- function(nmf.res,
   
   #Rename meta-programs after sorting them by metrics
   ord <- order(metaprograms.metrics$sampleCoverage,
-        metaprograms.metrics$silhouette,
-        decreasing = T)
+               metaprograms.metrics$silhouette,
+               decreasing = T)
   old.names <- names(markers.consensus)[ord]
   new.names <- paste0("MP",seq_along(ord))
   
@@ -360,7 +376,7 @@ getMetaPrograms <- function(nmf.res,
   map.index <- seq_along(old.names)
   names(map.index) <- as.numeric(gsub("MetaProgram","",old.names))
   cl_members.new <- map.index[as.character(cl_members)]
-
+  
   names(cl_members.new) <- names(cl_members)
   
   #weights of individual genes in each MP
@@ -413,17 +429,17 @@ getMetaPrograms <- function(nmf.res,
 #' @importFrom stats as.dendrogram
 #' @export  
 plotMetaPrograms <- function(mp.res,
-                            similarity.cutoff=c(0,1),
-                            scale = "none",
-                            downsample = 1000,
-                            showtree = TRUE,
-                            palette = viridis(100, option="A", direction=-1),
-                            annotation_colors = NULL,
-                            main = "Clustered Heatmap",
-                            show_rownames = FALSE,
-                            show_colnames = FALSE,
-                            ...) {
-
+                             similarity.cutoff=c(0,1),
+                             scale = "none",
+                             downsample = 1000,
+                             showtree = TRUE,
+                             palette = viridis(100, option="A", direction=-1),
+                             annotation_colors = NULL,
+                             main = "Clustered Heatmap",
+                             show_rownames = FALSE,
+                             show_colnames = FALSE,
+                             ...) {
+  
   J <- mp.res[["programs.similarity"]]
   tree <- mp.res[["programs.tree"]]
   cl_members <- mp.res[["programs.clusters"]]
@@ -444,7 +460,7 @@ plotMetaPrograms <- function(mp.res,
   cl_names <- names(cl_members)
   cl_members[!is.na(cl_members)] <- paste0("MP",cl_members[!is.na(cl_members)])
   names(cl_members) <- cl_names
-
+  
   #Recover order of MP clusters
   cluster.order <- unique(cl_members[labs.order])
   nMP <- length(cluster.order)
@@ -457,7 +473,7 @@ plotMetaPrograms <- function(mp.res,
   annotation_col <- as.data.frame(cl_members)
   colnames(annotation_col) <- "Metaprogram"
   annotation_col[["Metaprogram"]] <- factor(cl_members, levels=cluster.order)
-
+  
   #Apply trimming to similarity for plotting  
   J[J<similarity.cutoff[1]] <- similarity.cutoff[1]
   J[J>similarity.cutoff[2]] <- similarity.cutoff[2]
@@ -587,6 +603,14 @@ runGSEA <- function(genes, universe=NULL,
 #' @param scale Whether to scale the data matrix
 #' @param L1 L1 regularization term for NMF
 #' @param seed Random seed
+#' @param tol tolerance of the fit
+#' @param maxit maximum number of fitting iterations
+#' @param cuda Whether enabling cuda (experimental)
+#' @param cuda.env The name of `conda` environment with `torchnmf`
+#' @param cuda.conda_binary The binary location for `conda`
+#' @param cuda.device The device used in CUDA environment
+#' @param cuda.verbose Whether display the progress bar
+#' 
 #' @return Returns a Seurat object with a new dimensionality reduction (NMF)
 #'
 #' @examples
@@ -599,7 +623,11 @@ runGSEA <- function(genes, universe=NULL,
 runNMF <- function(obj, assay="RNA", slot="data", k=10,
                    new.reduction="NMF", seed=123,
                    L1=c(0,0), hvg=NULL,
-                   center=FALSE, scale=FALSE) {
+                   center=FALSE, scale=FALSE,
+                   tol = 1e-4, maxit = 100L,
+                   cuda = FALSE, cuda.device = 'cuda:0', cuda.env = 'torchnmf', 
+                   cuda.conda_binary = '/opt/mambaforge/bin/conda', 
+                   cuda.verbose = FALSE) {
   
   
   set.seed(seed)
@@ -612,11 +640,17 @@ runNMF <- function(obj, assay="RNA", slot="data", k=10,
   }
   
   mat <- getDataMatrix(obj=obj, assay=assay, slot=slot,
-                    hvg=hvg, center=center, scale=scale)
-
-  model <- RcppML::nmf(mat, k = k, L1 = L1, verbose=FALSE, seed = seed)
+                       hvg=hvg, center=center, scale=scale)
+  
+  if (cuda) {
+    model <- cuda_nmf(mat, k = k, L1 = L1, tol = tol, maxit = maxit,
+                      cuda.verbose = cuda.verbose, cuda.device = cuda.device, 
+                      cuda.env = cuda.env, cuda.conda_binary = cuda.conda_binary)
+  } else {
+    model <- RcppML::nmf(mat, k = k, L1 = L1, verbose=FALSE, seed = seed)
+  }
   model <- check_cpp_version(model)
-
+  
   rownames(model$h) <- paste0(new.reduction,"_",1:nrow(model$h))
   colnames(model$h) <- colnames(mat)
   
@@ -758,7 +792,7 @@ findVariableFeatures_wfilters <- function(
 #' @export  
 dropMetaPrograms <- function(mp.res,
                              dropMP=NULL) {
- 
+  
   mp.all <- names(mp.res$metaprograms.genes)
   todrop <- as.vector(dropMP)
   

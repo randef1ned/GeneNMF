@@ -262,3 +262,157 @@ check_cpp_version <- function(model) {
   }
   return(model)
 }
+
+#' @importFrom reticulate py_to_r use_condaenv import
+#' @importFrom dplyr `%>%`
+cuda_nmf <- function(mat, k, tol = 1e-4, maxit = 100L, L1 = c(0, 0), L2 = c(0, 0), cuda.device = 'cuda:0', cuda.env = 'torchnmf', cuda.conda_binary = '/opt/mambaforge/bin/conda', cuda.verbose = TRUE) {
+  tol <- as.integer(tol)
+  maxit <- as.integer(maxit)
+  k <- as.integer(k)
+  
+  use_condaenv(cuda.env, conda = cuda.conda_binary)
+  np       <- import('numpy', convert = FALSE)
+  torch    <- import('torch', convert = FALSE)
+  torchnmf <- import('torchnmf', convert = FALSE)
+  torch$manual_seed(42L)
+  
+  mat_mat <- as.matrix(mat) %>% 
+    t() %>%
+    pmax(0) %>%
+    {np$array(.)} %>%
+    {torch$from_numpy(.)$float()$to(cuda.device)}
+  
+  nmf_model <- torchnmf$nmf$NMF(mat_mat$shape, rank = k)$to(cuda.device)
+  nmf_model$fit(mat_mat, max_iter = maxit, verbose = cuda.verbose, tol = tol)
+  
+  eps <- 1e-12
+  W_t <- nmf_model$W$detach()   # likely (n_rows, k)
+  H_t <- nmf_model$H$detach()   # likely (n_cols, k)
+  
+  if (sum(abs(L1)) + sum(abs(L2)) > 0) {
+    res <- nmf_fit_pg(mat_mat, W_t, H_t, torch = torch,
+                      maxit = maxit, tol = tol,
+                      L1 = L1, L2 = L2,
+                      inner_iters = maxit, verbose = cuda.verbose)
+    # write back into the model (in-place on GPU)
+    nmf_model$W$copy_(res$W)
+    nmf_model$H$copy_(res$H)
+  }
+  
+  # --- scaleH analogue (normalize "component" axis) ---
+  # Since H is (n_cols, k), normalize columns (dim=0)
+  d_scaleh <- H_t$sum(dim = 0L)$add(eps)             # (k,)
+  H_scaleh <- H_t$div(d_scaleh$unsqueeze(0L))        # column-normalize
+  W_scaleh <- W_t$mul(d_scaleh$unsqueeze(0L))        # push scaling into W (broadcast over rows)
+  
+  # --- scaleW analogue ---
+  d_scalew <- W_scaleh$sum(dim = 0L)$add(eps)        # (k,)  <-- this is the Rcpp-style d
+  W_scalew <- W_scaleh$div(d_scalew$unsqueeze(0L))   # columns sum to 1
+  
+  # export
+  model <- list(
+    w = py_to_r(W_scalew$cpu()$numpy()) %>%
+      `rownames<-`(rownames(mat)) %>%
+      `colnames<-`(paste0('nmf', seq_len(ncol(.)))) %>%
+      as.matrix(),
+    d = py_to_r(d_scalew$cpu()$numpy()) %>%
+      as.integer(),
+    h = py_to_r(H_scaleh$cpu()$numpy()) %>%
+      `rownames<-`(paste0('Col_', seq_len(nrow(.)))) %>%
+      `colnames<-`(paste0('nmf', seq_len(ncol(.)))) %>%
+      as.matrix() %>%
+      t(),
+    tol = tol,
+    iter = maxit,
+    mse = 0
+  )
+  rm(list = c('nmf_model', 'mat_mat', 'd_scalew', 'W_scalew', 'd_scaleh', 'H_scaleh', 'W_scaleh', 'H_t', 'W_t'))
+  torch$cuda$empty_cache()
+  
+  return(model)
+}
+
+# ---- Projected GD updates mimicking RcppML L1/L2 inside predict() ----
+update_H_pg <- function(A, W, H, torch, L1 = 0, L2 = 0, iters = 50L, eps = 1e-12) {
+  # A: (n_rows, n_cols)  CUDA
+  # W: (n_rows, k)       CUDA
+  # H: (n_cols, k)       CUDA  where Ahat = W @ H^T
+  
+  with(torch$no_grad(), {
+    G <- W$transpose(0L, 1L)$matmul(W)      # (k,k)   = W^T W
+    C <- A$transpose(0L, 1L)$matmul(W)      # (n_cols,k) = A^T W
+    
+    # Lipschitz constant for gradient: ||G||_2 + L2
+    # k is small, so SVD is fine.
+    svals <- torch$linalg$svdvals(G)
+    Llip  <- svals[[0L]]$add(L2)$add(eps)
+    step  <- torch$reciprocal(Llip)
+    
+    for (t in seq_len(iters)) {
+      grad <- H$matmul(G)$sub(C)            # H G - C
+      if (L2 != 0) grad <- grad$add(H$mul(L2))
+      if (L1 != 0) grad <- grad$add(L1)     # + L1 (since H>=0, ||H||1 = sum(H))
+      
+      H$sub_(grad$mul(step))
+      H$clamp_(min = 0)
+    }
+    H
+  })
+}
+
+update_W_pg <- function(A, W, H, torch, L1 = 0, L2 = 0, iters = 50L, eps = 1e-12) {
+  # Update W given H, same convention Ahat = W @ H^T
+  
+  with(torch$no_grad(), {
+    G <- H$transpose(0L, 1L)$matmul(H)      # (k,k) = H^T H
+    C <- A$matmul(H)                        # (n_rows,k) = A H
+    
+    svals <- torch$linalg$svdvals(G)
+    Llip  <- svals[[0L]]$add(L2)$add(eps)
+    step  <- torch$reciprocal(Llip)
+    
+    for (t in seq_len(iters)) {
+      grad <- W$matmul(G)$sub(C)            # W G - C
+      if (L2 != 0) grad <- grad$add(W$mul(L2))
+      if (L1 != 0) grad <- grad$add(L1)
+      
+      W$sub_(grad$mul(step))
+      W$clamp_(min = 0)
+    }
+    W
+  })
+}
+
+# ---- One ALS loop with L1/L2 like RcppML (L1[0]=W, L1[1]=H) ----
+nmf_fit_pg <- function(A, W, H, torch,
+                       maxit = 100L, tol = 1e-4,
+                       L1 = c(0, 0), L2 = c(0, 0),
+                       inner_iters = 50L, verbose = TRUE) {
+  # Correlation-like stopping (Rcpp uses cor(w, w_prev))
+  # Here we use cosine similarity on flattened W as a proxy.
+  cos_sim <- function(x, y, eps = 1e-12) {
+    num <- (x * y)$sum()
+    den <- torch$sqrt((x * x)$sum() * (y * y)$sum())$add(eps)
+    num$div(den)
+  }
+  
+  with(torch$no_grad(), {
+    for (it in seq_len(maxit)) {
+      W_prev <- W$clone()
+      
+      # update H then W (regularized NNLS via projected GD)
+      H <- update_H_pg(A, W, H, L1 = L1[[2]], L2 = L2[[2]], iters = inner_iters)
+      W <- update_W_pg(A, W, H, L1 = L1[[1]], L2 = L2[[1]], iters = inner_iters)
+      
+      # stopping criterion
+      sim <- cos_sim(W$reshape(-1L), W_prev$reshape(-1L))
+      tol_now <- (1 - sim)$item()
+      
+      if (verbose) cat(sprintf("%4d | tol %.3e\n", it, tol_now))
+      if (tol_now < tol) break
+    }
+    list(W = W, H = H)
+  })
+}
+
+utils::globalVariables(".")

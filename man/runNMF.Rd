@@ -14,7 +14,14 @@ runNMF(
   L1 = c(0, 0),
   hvg = NULL,
   center = FALSE,
-  scale = FALSE
+  scale = FALSE,
+  tol = 1e-04,
+  maxit = 100L,
+  cuda = FALSE,
+  cuda.device = "cuda:0",
+  cuda.env = "torchnmf",
+  cuda.conda_binary = "/opt/mambaforge/bin/conda",
+  cuda.verbose = FALSE
 )
 }
 \arguments{
@@ -37,6 +44,20 @@ runNMF(
 \item{center}{Whether to center the data matrix}
 
 \item{scale}{Whether to scale the data matrix}
+
+\item{tol}{tolerance of the fit}
+
+\item{maxit}{maximum number of fitting iterations}
+
+\item{cuda}{Whether enabling cuda (experimental)}
+
+\item{cuda.device}{The device used in CUDA environment}
+
+\item{cuda.env}{The name of `conda` environment with `torchnmf`}
+
+\item{cuda.conda_binary}{The binary location for `conda`}
+
+\item{cuda.verbose}{Whether display the progress bar}
 }
 \value{
 Returns a Seurat object with a new dimensionality reduction (NMF)

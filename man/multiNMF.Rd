@@ -18,7 +18,14 @@ multiNMF(
   scale = FALSE,
   min.cells.per.sample = 10,
   hvg.blocklist = NULL,
-  seed = 123
+  seed = 123,
+  tol = 1e-04,
+  maxit = 100L,
+  cuda = FALSE,
+  cuda.device = "cuda:0",
+  cuda.env = "torchnmf",
+  cuda.conda_binary = "/opt/mambaforge/bin/conda",
+  cuda.verbose = FALSE
 )
 }
 \arguments{
@@ -56,6 +63,20 @@ adaptive immune(clone-specific) receptors. If set to `NULL` no genes
 will be excluded}
 
 \item{seed}{Random seed}
+
+\item{tol}{tolerance of the fit}
+
+\item{maxit}{maximum number of fitting iterations}
+
+\item{cuda}{Whether enabling cuda (experimental)}
+
+\item{cuda.device}{The device used in CUDA environment}
+
+\item{cuda.env}{The name of `conda` environment with `torchnmf`}
+
+\item{cuda.conda_binary}{The binary location for `conda`}
+
+\item{cuda.verbose}{Whether display the progress bar}
 }
 \value{
 Returns a list of NMF programs, one for each sample and for each
