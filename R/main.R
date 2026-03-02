@@ -55,6 +55,7 @@ multiNMF <- function(obj.list, assay="RNA", slot="data", k=5:6,
                      cuda.conda_binary = '/opt/mambaforge/bin/conda', 
                      cuda.verbose = FALSE) {
   
+  seed <- as.integer(seed)
   set.seed(seed)
   
   #exclude small samples
@@ -85,7 +86,7 @@ multiNMF <- function(obj.list, assay="RNA", slot="data", k=5:6,
     res.k <- lapply(k, function(k.this) {
       
       if (cuda) {
-        model <- cuda_nmf(mat, k = k.this, L1 = L1, tol = tol, maxit = maxit,
+        model <- cuda_nmf(mat, k = k.this, L1 = L1, tol = tol, maxit = maxit, seed = seed,
                           cuda.verbose = cuda.verbose, cuda.device = cuda.device, 
                           cuda.env = cuda.env, cuda.conda_binary = cuda.conda_binary)
       } else {
@@ -629,7 +630,7 @@ runNMF <- function(obj, assay="RNA", slot="data", k=10,
                    cuda.conda_binary = '/opt/mambaforge/bin/conda', 
                    cuda.verbose = FALSE) {
   
-  
+  seed <- as.integer(seed)
   set.seed(seed)
   
   if (is.null(hvg) || length(hvg)<=1) {
@@ -643,7 +644,7 @@ runNMF <- function(obj, assay="RNA", slot="data", k=10,
                        hvg=hvg, center=center, scale=scale)
   
   if (cuda) {
-    model <- cuda_nmf(mat, k = k, L1 = L1, tol = tol, maxit = maxit,
+    model <- cuda_nmf(mat, k = k, L1 = L1, tol = tol, maxit = maxit, seed = seed,
                       cuda.verbose = cuda.verbose, cuda.device = cuda.device, 
                       cuda.env = cuda.env, cuda.conda_binary = cuda.conda_binary)
   } else {

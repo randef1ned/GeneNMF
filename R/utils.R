@@ -265,16 +265,21 @@ check_cpp_version <- function(model) {
 
 #' @importFrom reticulate py_to_r use_condaenv import
 #' @importFrom dplyr `%>%`
-cuda_nmf <- function(mat, k, tol = 1e-4, maxit = 100L, L1 = c(0, 0), L2 = c(0, 0), cuda.device = 'cuda:0', cuda.env = 'torchnmf', cuda.conda_binary = '/opt/mambaforge/bin/conda', cuda.verbose = TRUE) {
+cuda_nmf <- function(mat, k, tol = 1e-4, maxit = 100L, L1 = c(0, 0), L2 = c(0, 0), 
+                     seed = seed,
+                     cuda.device = 'cuda:0', cuda.env = 'torchnmf', 
+                     cuda.conda_binary = '/opt/mambaforge/bin/conda', 
+                     cuda.verbose = TRUE) {
   tol <- as.integer(tol)
   maxit <- as.integer(maxit)
   k <- as.integer(k)
+  seed <- as.integer(seed)
   
   use_condaenv(cuda.env, conda = cuda.conda_binary)
   np       <- import('numpy', convert = FALSE)
   torch    <- import('torch', convert = FALSE)
   torchnmf <- import('torchnmf', convert = FALSE)
-  torch$manual_seed(42L)
+  torch$manual_seed(seed)
   
   mat_mat <- as.matrix(mat) %>% 
     t() %>%
