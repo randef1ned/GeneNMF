@@ -270,7 +270,7 @@ cuda_nmf <- function(mat, k, tol = 1e-4, maxit = 100L, L1 = c(0, 0), L2 = c(0, 0
                      cuda.device = 'cuda:0', cuda.env = 'torchnmf', 
                      cuda.conda_binary = '/opt/mambaforge/bin/conda', 
                      cuda.verbose = TRUE) {
-  tol <- as.integer(tol)
+  tol <- as.numeric(tol)
   maxit <- as.integer(maxit)
   k <- as.integer(k)
   seed <- as.integer(seed)
@@ -388,6 +388,7 @@ update_W_pg <- function(A, W, H, torch, L1 = 0, L2 = 0, iters = 50L, eps = 1e-12
   })
 }
 
+
 # ---- One ALS loop with L1/L2 like RcppML (L1[0]=W, L1[1]=H) ----
 nmf_fit_pg <- function(A, W, H, torch,
                        maxit = 100L, tol = 1e-4,
@@ -406,8 +407,8 @@ nmf_fit_pg <- function(A, W, H, torch,
       W_prev <- W$clone()
       
       # update H then W (regularized NNLS via projected GD)
-      H <- update_H_pg(A, W, H, L1 = L1[[2]], L2 = L2[[2]], iters = inner_iters)
-      W <- update_W_pg(A, W, H, L1 = L1[[1]], L2 = L2[[1]], iters = inner_iters)
+      H <- update_H_pg(A, W, H, torch = torch, L1 = L1[[2]], L2 = L2[[2]], iters = inner_iters)
+      W <- update_W_pg(A, W, H, torch = torch, L1 = L1[[1]], L2 = L2[[1]], iters = inner_iters)
       
       # stopping criterion
       sim <- cos_sim(W$reshape(-1L), W_prev$reshape(-1L))
